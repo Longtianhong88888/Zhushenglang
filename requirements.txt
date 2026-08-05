@@ -9,3 +9,4 @@ zzshare>=0.4.9
 requests>=2.28
 fastparquet>=2024.5
 openpyxl>=3.1
+PyQt5>=5.15
