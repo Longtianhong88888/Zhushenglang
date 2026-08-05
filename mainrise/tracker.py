@@ -183,8 +183,8 @@ def update_positions(pos: pd.DataFrame, panels_by_code: dict, watch: pd.DataFram
         reason = None
         if last["low"] <= buy_p * STOP:
             reason = f"止损-5%（低点{last['low']:.2f}≤{buy_p*STOP:.2f}）"
-        elif last["low"] <= peak * PULLBACK:
-            reason = f"高点回落8%（峰值{peak:.2f}→低点{last['low']:.2f}）"
+        elif last["close"] <= peak * PULLBACK:
+            reason = f"高点回落8%（峰值{peak:.2f}→收盘{last['close']:.2f}）"
         elif last["close"] < last["ma10"]:
             reason = f"跌破MA10（{last['ma10']:.2f}）"
         elif days_held >= TIME_STOP:
@@ -254,18 +254,17 @@ def run(date: str | None = None, no_scan: bool = False,
             "chg": today["chg"], "status": label, "hint": hint,
             "ma10": today["ma10"], "ma20": today["ma20"],
             "vr": today["vol_ratio"], "chg10": today["chg10"]})
-    # 全市场新信号并入状态表（无评分，标注待评估），保证观察池为空时也有买点内容
-    watch_codes = set(watch["code"])
-    for _, r in found.iterrows():
-        if r["code"] in watch_codes:
-            continue
-        label = "T0新信号" if r["kind"] == "T0" else "T1确认买点"
-        state_rows.append({
-            "code": r["code"], "name": r["name"] or names.get(r["code"], ""),
-            "composite": np.nan, "close": np.nan, "chg": r["chg"],
-            "status": label,
-            "hint": "新信号，待财务评估后入池（先评估再考虑买点）",
-            "ma10": np.nan, "ma20": np.nan, "vr": r["vr"], "chg10": r["chg10"]})
+    # 仅观察池为空时，才把全市场新信号并入状态表兜底（避免买点区空白）；
+    # 观察池非空时新信号只在第四节"全市场新信号"列示，不占用买点提示区
+    if len(watch) == 0:
+        for _, r in found.iterrows():
+            label = "T0新信号" if r["kind"] == "T0" else "T1确认买点"
+            state_rows.append({
+                "code": r["code"], "name": r["name"] or names.get(r["code"], ""),
+                "composite": np.nan, "close": np.nan, "chg": r["chg"],
+                "status": label,
+                "hint": "新信号，待财务评估后入池（先评估再考虑买点）",
+                "ma10": np.nan, "ma20": np.nan, "vr": r["vr"], "chg10": r["chg10"]})
     status_df = pd.DataFrame(state_rows)
     for col in ["code", "name", "composite", "close", "chg", "status", "hint",
                 "ma10", "ma20", "vr", "chg10"]:

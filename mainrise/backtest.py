@@ -47,7 +47,8 @@ def scan(panels: pd.DataFrame, min_chg: float, min_vr: float, mkt_min: int,
                 c1 = t.iloc[i + 1]
                 if c1["close"] > m5[i + 1] and c1["low"] >= c[i] * 0.97:
                     rows.append({"code": code, "S": i, "S_date": dates[i],
-                                 "buy_i": i + 2, "chg": chg[i], "vol_ratio": vr[i],
+                                 "buy_date": dates[i + 2], "buy_i": i + 2,
+                                 "chg": chg[i], "vol_ratio": vr[i],
                                  "zt": zt_arr[i] if mkt_min else 0})
                     i += 2
                     continue
@@ -107,7 +108,7 @@ def run() -> None:
                 pf = pos / neg if neg else 99
                 line = f"涨幅≥{min_chg:.0f}% 量比≥{min_vr:.1f} 涨停≥{mkt_min}: n={len(rets):5d} 胜率{(rets>0).mean():.1%} 均收{rets.mean():+.2%} PF={pf:.3f}"
                 print(line)
-                if pf > 1.5 and (best is None or pf > best[0]):
+                if best is None or pf > best[0]:
                     best = (pf, min_chg, min_vr, mkt_min, sig, rets)
     if best:
         pf, min_chg, min_vr, mkt_min, sig, rets = best
