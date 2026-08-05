@@ -21,7 +21,7 @@ jobs:
           pip install pyinstaller pandas numpy requests tqdm zzshare openpyxl
 
       - name: 打包 Windows 轻量版（不含内置行情数据）
-        shell: bash
+        shell: cmd
         env:
           SKIP_BUNDLE: "1"
         run: build_gui_windows.bat
