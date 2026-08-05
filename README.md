@@ -32,6 +32,18 @@
 Windows 版在 Windows 电脑上运行 `build_gui_windows.bat`，产物
 `dist\mainrise_gui\mainrise_gui.exe`（整个 mainrise_gui 目录即软件，压缩后分发）。
 
+### 方式三：GitHub Actions 云端打包（Windows 轻量版）
+
+仓库 `Longtianhong88888/Zhushenglang` 已配置 workflow（`.github/workflows/windows-build.yml`）：
+
+- 推送 `main` 分支或仓库 Actions 页面手动「Run workflow」即触发
+- 产物为 **Windows 轻量版**（约 32MB，**不含内置行情数据**），从
+  Actions 运行页 → Artifacts → `mainrise-windows` 下载
+- 轻量版首次打开：点【初始化全量数据】联网下载行情（约 650MB）后使用，
+  之后每天【更新行情】增量补齐
+- 如需带内置数据的完整版，在 Windows 机器本地跑 `build_gui_windows.bat`
+  （默认包含数据包），或设置 `SKIP_BUNDLE=1` 跳过数据做轻量版
+
 ### 方式二：独立命令行（免装 Python）
 
 在 macOS 上执行 `./build_macos.sh`，产物为单文件 `dist/mainrise`（约 63MB，已内置
