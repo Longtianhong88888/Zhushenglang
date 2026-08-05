@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.DS_Store
+data/
+output/
+dist/
+build/
+.trash*/
+*.zip
+.mplcache/
+.env
+*.egg-info/
+*.spec

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mainrise-quant"
+version = "0.1.0"
+description = "A股主升浪信号跟踪模型（信号扫描/财务评估/综合评分/每日跟踪）"
+requires-python = ">=3.9"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "requests>=2.28",
+    "tqdm>=4.60",
+    "zzshare>=0.4.9",
+    "openpyxl>=3.1",
+]
+
+[project.scripts]
+mainrise = "mainrise.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mainrise*"]

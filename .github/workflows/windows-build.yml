@@ -1,0 +1,40 @@
+name: Windows 轻量版打包
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pandas numpy requests tqdm zzshare openpyxl
+
+      - name: 打包 Windows 轻量版（不含内置行情数据）
+        shell: bash
+        env:
+          SKIP_BUNDLE: "1"
+        run: build_gui_windows.bat
+
+      - name: 压缩成品
+        shell: bash
+        run: |
+          cd dist
+          powershell Compress-Archive -Path mainrise_gui -DestinationPath mainrise-windows.zip -Force
+          ls -lh mainrise-windows.zip
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: mainrise-windows
+          path: dist/mainrise-windows.zip
