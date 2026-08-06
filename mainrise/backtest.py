@@ -76,7 +76,7 @@ def run(grid: bool = False) -> None:
         vrs = [1.1, 1.2, 1.3, 1.4, 1.5, 1.8]
         mkts = [0, 30, 60]
         print(f"精细扫描: 涨幅{chgs} x 量比{vrs} x 涨停{mkts}"
-              f"（{len(chgs)*len(vrs)*len(mkts)} 组，约 15-20 分钟）")
+              f"（{len(chgs)*len(vrs)*len(mkts)} 组，约 30-40 分钟，建议隔夜运行）")
     else:
         chgs, vrs, mkts = [2.0, 3.0, 5.0], [1.2, 1.5], [0, 40, 60]
     for min_chg in chgs:

@@ -110,7 +110,7 @@ def main() -> None:
 
     p = sub.add_parser("backtest", help="回测（生成信号明细供评估）")
     p.add_argument("--grid", action="store_true",
-                   help="精细参数扫描（约72组，15-20分钟）")
+                   help="精细参数扫描（约200组，30-40分钟）")
     p.set_defaults(func=cmd_backtest)
 
     p = sub.add_parser("evaluate", help="信号日财务评估（需 MAINRISE_API_KEY）")
