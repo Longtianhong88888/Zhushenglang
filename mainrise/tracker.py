@@ -58,14 +58,21 @@ def load_positions() -> pd.DataFrame:
     cols = ["code", "name", "signal_date", "confirm_date", "buy_kind",
             "buy_date", "buy_price", "peak", "peak_date", "status",
             "close_date", "close_price", "reason"]
+    text_cols = {"name", "signal_date", "confirm_date", "buy_date",
+                 "peak_date", "close_date", "reason", "status"}
     p = pos_path()
     if p.exists():
         df = pd.read_csv(p, dtype={"code": str})
         for c in cols:
             if c not in df.columns:
                 df[c] = np.nan
-        return df[cols]
-    return pd.DataFrame(columns=cols)
+    else:
+        df = pd.DataFrame(columns=cols)
+    # 文本/日期列统一为 object，避免 float64 列赋字符串触发 FutureWarning
+    for c in text_cols:
+        if c in df.columns:
+            df[c] = df[c].astype("object")
+    return df[cols]
 
 
 def save_positions(df: pd.DataFrame) -> None:

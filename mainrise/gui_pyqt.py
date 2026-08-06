@@ -50,21 +50,29 @@ SETTINGS_PATH = Path.home() / ".mainrise" / "settings.json"
 
 
 def _apply_saved_settings() -> None:
-    """启动时读取上次选择的数据目录（须在 paths.home() 首次调用前执行）。"""
+    """启动时读取上次的数据目录与 API Key（须在 paths.home() 首次调用前执行）。"""
     try:
         d = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
         if d.get("home"):
             os.environ["MAINRISE_HOME"] = d["home"]
+        if d.get("api_key"):
+            os.environ["MAINRISE_API_KEY"] = d["api_key"]
     except Exception:  # noqa: BLE001
         pass
 
 
-def _save_settings() -> None:
+def _save_settings(api_key: str = "") -> None:
+    """保存数据目录与 API Key（~/.mainrise/settings.json，权限 600）。"""
     try:
         SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        SETTINGS_PATH.write_text(
-            json.dumps({"home": os.environ.get("MAINRISE_HOME", "")}),
-            encoding="utf-8")
+        SETTINGS_PATH.write_text(json.dumps({
+            "home": os.environ.get("MAINRISE_HOME", ""),
+            "api_key": api_key,
+        }), encoding="utf-8")
+        try:
+            os.chmod(SETTINGS_PATH, 0o600)  # 仅当前用户可读写
+        except Exception:  # noqa: BLE001
+            pass
     except Exception:  # noqa: BLE001
         pass
 
@@ -147,6 +155,7 @@ class MainWindow(QMainWindow):
         self.key_edit = QLineEdit(os.environ.get("MAINRISE_API_KEY", ""))
         self.key_edit.setEchoMode(QLineEdit.Password)
         self.key_edit.setFixedWidth(240)
+        self.key_edit.editingFinished.connect(self._save_key)
         top.addWidget(self.key_edit)
         btn_help = QPushButton("使用说明")
         btn_help.clicked.connect(self._open_help)
@@ -468,7 +477,14 @@ class MainWindow(QMainWindow):
             os.environ["MAINRISE_HOME"] = p
             self.home_lbl.setText(str(paths.home()))
             self._refresh_data_label()
-            _save_settings()
+            _save_settings(self.key_edit.text().strip())
+
+    def _save_key(self) -> None:
+        """输入框编辑完成后保存 API Key，下次启动自动填入。"""
+        key = self.key_edit.text().strip()
+        os.environ["MAINRISE_API_KEY"] = key
+        _save_settings(key)
+        self.statusBar().showMessage("API Key 已保存（下次启动自动填入）")
 
     def _open_reports(self) -> None:
         d = paths.report_dir()

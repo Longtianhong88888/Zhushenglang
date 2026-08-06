@@ -32,7 +32,7 @@ def active_pos(code, buy_date, buy_price):
         "code": code, "name": "测试", "signal_date": np.nan, "confirm_date": np.nan,
         "buy_kind": 2, "buy_date": buy_date, "buy_price": buy_price,
         "peak": buy_price, "peak_date": buy_date, "status": "active",
-        "close_date": np.nan, "close_price": np.nan, "reason": ""}])
+        "close_date": None, "close_price": None, "reason": ""}])
 
 
 class TestUpdatePositions(unittest.TestCase):
