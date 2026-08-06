@@ -77,7 +77,7 @@ def update_positions(pos: pd.DataFrame, panels_by_code: dict, watch: pd.DataFram
                      date: str, names: dict, max_10d: float = MAX_10D_GAIN) -> pd.DataFrame:
     """纸面持仓：回踩/T1 自动建仓、更新峰值、平仓。"""
     pos = pos.copy()
-    watch_map = dict(zip(watch["code"], watch["name"]))
+    watch_map = dict(zip(watch.get("code", []), watch.get("name", [])))
 
     open_cnt = int(((pos["status"] == "active") | (pos["status"] == "pending")).sum())
     for _, r in watch.iterrows():

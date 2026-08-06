@@ -56,7 +56,7 @@ def scan(panels: pd.DataFrame, min_chg: float, min_vr: float, mkt_min: int,
     return pd.DataFrame(rows)
 
 
-def run() -> None:
+def run(grid: bool = False) -> None:
     panels = load_all_panels()
     if panels.empty:
         raise SystemExit("本地无行情数据，请先运行: mainrise init")
@@ -71,9 +71,17 @@ def run() -> None:
     print("=== 主升浪启动信号：参数敏感性 ===")
     best = None
     end = END or panels["date"].max()
-    for min_chg in [2.0, 3.0, 5.0]:
-        for min_vr in [1.2, 1.5]:
-            for mkt_min in [0, 40, 60]:
+    if grid:
+        chgs = [round(x, 1) for x in np.arange(2.0, 7.01, 0.5)]  # 2.0~7.0 步长0.5
+        vrs = [1.1, 1.2, 1.3, 1.4, 1.5, 1.8]
+        mkts = [0, 30, 60]
+        print(f"精细扫描: 涨幅{chgs} x 量比{vrs} x 涨停{mkts}"
+              f"（{len(chgs)*len(vrs)*len(mkts)} 组，约 15-20 分钟）")
+    else:
+        chgs, vrs, mkts = [2.0, 3.0, 5.0], [1.2, 1.5], [0, 40, 60]
+    for min_chg in chgs:
+        for min_vr in vrs:
+            for mkt_min in mkts:
                 sig = scan(panels, min_chg, min_vr, mkt_min, zt_map)
                 sig = sig[(sig["S_date"] >= START) & (sig["S_date"] <= end)]
                 if sig.empty:
@@ -119,8 +127,13 @@ def run() -> None:
 
 
 def main() -> None:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--grid", action="store_true",
+                    help="精细参数扫描（约72组，耗时15-20分钟）")
+    args = ap.parse_args()
     try:
-        run()
+        run(args.grid)
     except SystemExit as e:
         print(e)
         sys.exit(1)

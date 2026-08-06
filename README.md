@@ -100,15 +100,24 @@ mainrise gui                      # 打开图形界面软件
 ## 目录结构
 
 ```
-config.py                全局配置
 src/
-  zzshare_data.py        zzshare 全市场日线加载（官方涨停价/换手率/ST/停牌）
-  data_fetcher.py        交易日历（trade_dates.csv）
+mainrise/
+  paths.py               数据目录解析（$MAINRISE_HOME / 项目模式 / ~/.mainrise）
+  data.py                zzshare 数据层：交易日历/股票名册/日线抓取与解压
+  signals.py             信号指标（均线/量比/创新高/状态判定）
+  tracker.py             每日跟踪：买点提示/纸面持仓/报告（Markdown+CSV+Excel）
+  evaluate.py            信号日财务评估（同花顺 API，无前视）
+  report.py              综合评分（40%财务+30%信号+30%产业地位）
+  backtest.py            参数敏感性回测
+  snapshot.py            实时行情（股票/ETF 自动路由）
+  gui_pyqt.py            PyQt5 图形界面
+  excel_report.py        Excel 报告生成
+  resources/             产业链信息 CSV（行业地位可配置）
 scripts/
   backtest_mainrise.py   主升浪信号回测（参数敏感性 + 年化收益）
-  evaluate_signals.py    信号日财务评估（同花顺 API，信号日已披露报告期，无前视）
-  build_full_report.py   综合评分报告（40%财务+30%信号+30%产业地位）+ 观察池导出
-  track_mainrise.py      每日跟踪：买点提示 / 纸面持仓 / 全市场新信号扫描
+  （旧命令兼容壳，等价 mainrise 子命令）
+tests/                   单元测试（信号引擎/快照路由/持仓平仓逻辑）
+docs/                    工作笔记
 data/
   zzshare_daily/         全市场日线缓存（按交易日，2021 起）
   stock_list.csv         代码→名称映射
@@ -116,6 +125,12 @@ data/
 output/
   reports/               综合评估 / 每日跟踪报告
   state/                 观察池 + 纸面持仓账本
+```
+
+## 测试
+
+```bash
+python3 -m unittest discover -s tests
 ```
 
 ## 每日运行

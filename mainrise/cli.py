@@ -52,9 +52,9 @@ def cmd_update(_: argparse.Namespace) -> None:
     print(f"更新完成: {len(ok)} 个交易日有数据，{len(empty)} 空/滞后")
 
 
-def cmd_backtest(_: argparse.Namespace) -> None:
+def cmd_backtest(args: argparse.Namespace) -> None:
     from mainrise import backtest
-    backtest.run()
+    backtest.run(getattr(args, "grid", False))
 
 
 def cmd_evaluate(_: argparse.Namespace) -> None:
@@ -109,6 +109,8 @@ def main() -> None:
     p.set_defaults(func=cmd_update)
 
     p = sub.add_parser("backtest", help="回测（生成信号明细供评估）")
+    p.add_argument("--grid", action="store_true",
+                   help="精细参数扫描（约72组，15-20分钟）")
     p.set_defaults(func=cmd_backtest)
 
     p = sub.add_parser("evaluate", help="信号日财务评估（需 MAINRISE_API_KEY）")

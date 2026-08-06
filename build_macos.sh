@@ -3,7 +3,8 @@
 # 产物: dist/mainrise  （下载后 chmod +x mainrise 即可运行）
 set -e
 cd "$(dirname "$0")"
-python3 -m PyInstaller \
+PYTHON="${PYTHON:-python3}"
+"$PYTHON" -m PyInstaller \
   --onefile \
   --name mainrise \
   --clean \

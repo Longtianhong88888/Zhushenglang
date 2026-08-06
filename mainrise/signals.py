@@ -76,7 +76,8 @@ def row_status(row: pd.Series, prev_signal: bool,
         if extended:
             hint += f"（⚠10日已+{row['chg10']:.0f}%，涨幅过大勿追）"
         return ("T1确认买点", hint)
-    if row["bull"] and low >= m20 * 0.99 and row["vol_ratio"] <= 1.0 and close < m5:
+    if (row["bull"] and low >= m20 * 0.99 and close >= m20 * 0.99
+            and row["vol_ratio"] <= 1.0 and close < m5):
         hint = f"买点2：MA10({m10:.2f})附近缩量企稳，可低吸"
         if extended:
             hint += f"（⚠10日已+{row['chg10']:.0f}%，涨幅过大勿追）"

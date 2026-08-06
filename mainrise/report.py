@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 
@@ -48,6 +49,28 @@ INFO = {
     "300191": {"name": "潜能恒信", "track": "油气勘探+海洋油田开采", "status": "南海涠洲5-3油田2025投产，2026目标日产万桶", "pos": 68, "risk": "油田爬坡与资本开支；油价波动"},
 }
 
+RESOURCES = Path(__file__).resolve().parent / "resources" / "industry_info.csv"
+
+
+def load_industry_info() -> dict:
+    """从 CSV 读取产业链信息；CSV 缺失/损坏时回退到内置 INFO（向后兼容）。"""
+    try:
+        df = pd.read_csv(RESOURCES, dtype={"code": str})
+        out = {}
+        for _, r in df.iterrows():
+            out[str(r["code"])] = {
+                "name": str(r["name"]),
+                "track": str(r["track"]),
+                "status": str(r["status"]),
+                "pos": float(r["pos"]),
+                "risk": str(r["risk"]),
+            }
+        if out:
+            return out
+    except Exception:  # noqa: BLE001  文件缺失/损坏时使用内置兜底
+        pass
+    return INFO
+
 
 def parse_prev_report() -> pd.DataFrame:
     md = (paths.report_dir() / f"信号评估_{datetime.now().strftime('%Y-%m-%d')}.md")
@@ -69,7 +92,8 @@ def parse_prev_report() -> pd.DataFrame:
 
 def run() -> str:
     df = parse_prev_report()
-    for code, info in INFO.items():
+    industry = load_industry_info()
+    for code, info in industry.items():
         m = df["code"] == code
         if m.any():
             df.loc[m, "name"] = info["name"]

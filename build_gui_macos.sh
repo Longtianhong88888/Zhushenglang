@@ -5,16 +5,19 @@
 set -e
 cd "$(dirname "$0")"
 
+# Python 解释器：可用 PYTHON 环境变量指定（如 pyenv/虚拟环境），默认 python3
+PYTHON="${PYTHON:-python3}"
+
 ADD_DATA=()
 if [ -z "$SKIP_BUNDLE" ]; then
   echo "构建内置行情数据包（SKIP_BUNDLE=1 可跳过，做轻量版）..."
-  python3 scripts/build_bundle.py
+  "$PYTHON" scripts/build_bundle.py
   ADD_DATA=(--add-data "build/bundled_data.zip:mainrise_data")
 else
   echo "轻量版：不内置行情数据（新电脑首次使用需联网初始化）"
 fi
 
-python3 -m PyInstaller \
+"$PYTHON" -m PyInstaller \
   --windowed \
   --onedir \
   --noconfirm \

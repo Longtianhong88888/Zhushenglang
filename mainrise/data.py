@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 import sys
+import threading
 import zipfile
 from pathlib import Path
 
@@ -35,12 +36,15 @@ _KEEP = ["date", "code", "open", "high", "low", "close", "limit_price",
          "is_st", "is_paused", "volume"]
 
 _api = None
+_api_lock = threading.Lock()
 
 
 def get_api() -> DataApi:
     global _api
     if _api is None:
-        _api = DataApi()
+        with _api_lock:
+            if _api is None:  # 双重检查：多线程下只创建一次
+                _api = DataApi()
     return _api
 
 

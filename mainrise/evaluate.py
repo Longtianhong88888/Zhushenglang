@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 
 from mainrise import paths
+from mainrise.report import load_industry_info
 from mainrise.snapshot import get_api_key, ths_code
 
 BASE = "https://fuyao.aicubes.cn"
@@ -100,6 +101,17 @@ TRACK_MAP = {
 }
 
 
+def _track_map() -> dict:
+    """赛道标注：优先读 industry_info.csv，缺失用内置 TRACK_MAP 兜底。"""
+    try:
+        info = load_industry_info()
+        if info:
+            return {c: v["track"] for c, v in info.items()}
+    except Exception:  # noqa: BLE001
+        pass
+    return TRACK_MAP
+
+
 def run() -> str:
     trades_path = paths.report_dir() / "mainrise_trades.csv"
     if not trades_path.exists():
@@ -113,6 +125,7 @@ def run() -> str:
     print(f"最近{RECENT_DAYS}个交易日信号标的: {len(codes)} 只")
 
     rows = []
+    track_map = _track_map()
     for i, code in enumerate(codes):
         report = available_report(latest_signal[code])
         f = fetch_indicators(code, report)
@@ -132,7 +145,7 @@ def run() -> str:
             "负债率%": round(g(solv, "assets_debt_ratio"), 1),
             "质量分": score, "评级": grade,
             "归类": classify(cnt[code], grade),
-            "赛道": TRACK_MAP.get(code, "待核验"),
+            "赛道": track_map.get(code, "待核验"),
             "报告期": f.get("report", "-") if f else "-",
         })
         if (i + 1) % 20 == 0:
