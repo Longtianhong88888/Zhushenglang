@@ -7,6 +7,7 @@
   mainrise evaluate                财务评估（需 MAINRISE_API_KEY）
   mainrise report                  综合评分 + 观察池
   mainrise track --no-scan         每日跟踪（买点/持仓/报告）
+  mainrise dashboard               以 QuantDark 模板更新 KPI 仪表盘（track 后自动执行）
   mainrise snapshot 601899 000975  实时行情验证
   mainrise home                    显示数据目录
 """
@@ -74,6 +75,19 @@ def cmd_track(args: argparse.Namespace) -> None:
     print(f"持仓: {out['active']} 活跃 / {out['pending']} 待买入 / {out['closed']} 已平仓")
     for _, r in out["buy_points"].iterrows():
         print(f"  {r['code']} {r['name']} [{r['status']}] {r['hint']}")
+    if not args.no_dashboard:
+        from mainrise import dashboard
+        try:
+            dash = dashboard.update_dashboard()
+            print(f"仪表盘已同步: {dash}")
+        except Exception as exc:  # 仪表盘更新失败不阻塞跟踪报告本身
+            print(f"⚠ 仪表盘更新失败: {exc}")
+
+
+def cmd_dashboard(args: argparse.Namespace) -> None:
+    from mainrise import dashboard
+    out = dashboard.update_dashboard(output=args.output)
+    print(f"仪表盘已更新: {out}")
 
 
 def cmd_snapshot(args: argparse.Namespace) -> None:
@@ -123,7 +137,13 @@ def main() -> None:
     p.add_argument("--date", default=None)
     p.add_argument("--no-scan", action="store_true")
     p.add_argument("--max-10d-gain", type=float, default=80.0)
+    p.add_argument("--no-dashboard", action="store_true",
+                   help="跳过跟踪后的仪表盘同步更新")
     p.set_defaults(func=cmd_track)
+
+    p = sub.add_parser("dashboard", help="以 QuantDark 模板更新 KPI 仪表盘")
+    p.add_argument("--output", default=None, help="输出文件路径，默认 output/reports/主升浪跟踪仪表盘.xlsx")
+    p.set_defaults(func=cmd_dashboard)
 
     p = sub.add_parser("snapshot", help="实时行情快照（需 MAINRISE_API_KEY）")
     p.add_argument("codes", nargs="+")

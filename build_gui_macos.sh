@@ -16,6 +16,8 @@ if [ -z "$SKIP_BUNDLE" ]; then
 else
   echo "轻量版：不内置行情数据（新电脑首次使用需联网初始化）"
 fi
+# 仪表盘模板（每日跟踪后同步更新仪表盘需要）
+ADD_DATA+=(--add-data "mainrise/resources/dashboard_template.xlsx:mainrise/resources")
 
 "$PYTHON" -m PyInstaller \
   --windowed \

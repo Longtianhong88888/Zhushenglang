@@ -8,6 +8,7 @@ PYTHON="${PYTHON:-python3}"
   --onefile \
   --name mainrise \
   --clean \
+  --add-data "mainrise/resources/dashboard_template.xlsx:mainrise/resources" \
   --collect-all zzshare \
   --hidden-import tqdm \
   mainrise/cli.py

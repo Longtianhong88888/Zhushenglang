@@ -198,6 +198,7 @@ class MainWindow(QMainWindow):
         sv.addWidget(btn_snap)
         lv.addWidget(snap_box)
         self._add_group(lv, "报告", [
+            ("更新仪表盘", self._task_dashboard),
             ("打开报告目录", self._open_reports),
             ("打开最新跟踪报告", self._open_latest),
             ("打开 Excel 报告", self._open_latest_excel),
@@ -356,6 +357,17 @@ class MainWindow(QMainWindow):
         print(f"持仓: {out['active']} 活跃 / {out['pending']} 待买入 / {out['closed']} 已平仓")
         for _, r in out["buy_points"].iterrows():
             print(f"  {r['code']} {r['name']} [{r['status']}] {r['hint']}")
+        try:
+            from mainrise import dashboard
+            dash = dashboard.update_dashboard()
+            print(f"仪表盘已同步: {dash}")
+        except Exception as exc:
+            print(f"⚠ 仪表盘更新失败: {exc}")
+
+    def _do_dashboard(self) -> None:
+        from mainrise import dashboard
+        dash = dashboard.update_dashboard()
+        print(f"仪表盘已更新: {dash}")
 
     def try_bundled_data(self) -> bool:
         """数据目录无行情时，尝试解压软件内置的数据包。返回是否有内置包可解压。"""
@@ -461,6 +473,9 @@ class MainWindow(QMainWindow):
 
     def _task_track(self) -> None:
         self._run(self._do_track, "生成跟踪报告")
+
+    def _task_dashboard(self) -> None:
+        self._run(self._do_dashboard, "更新仪表盘")
 
     def _task_snapshot(self) -> None:
         codes = [c.strip() for c in self.codes_edit.text().replace(",", " ").split()

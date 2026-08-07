@@ -15,6 +15,9 @@ set "ADD_DATA=--add-data build\bundled_data.zip;mainrise_data"
 
 :ready
 
+REM 仪表盘模板（每日跟踪后同步更新仪表盘需要）
+set "ADD_DATA=%ADD_DATA% --add-data mainrise\resources\dashboard_template.xlsx;mainrise\resources"
+
 python -m PyInstaller ^
   --windowed ^
   --onedir ^
