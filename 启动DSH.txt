@@ -1,0 +1,3 @@
+dsh web                          # 启动网页版（打开后 Settings → Models 填 DeepSeek API Key）
+dsh --profile tui                # 终端交互模式
+dsh --profile headless "任务" 

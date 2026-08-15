@@ -1,9 +1,8 @@
-"""信号日财务评估（同花顺指标，信号日已披露报告期，避免前视）。"""
+"""信号日财务评估（东方财富公开接口，按公告日期 <= 信号日取已披露报告期，避免前视）。"""
 from __future__ import annotations
 
-import os
 import sys
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 import pandas as pd
@@ -11,17 +10,22 @@ import requests
 
 from mainrise import paths
 from mainrise.report import load_industry_info
-from mainrise.snapshot import get_api_key, ths_code
 
-BASE = "https://fuyao.aicubes.cn"
+EM_DATA = "https://datacenter-web.eastmoney.com/api/data/v1/get"
 RECENT_DAYS = 40      # 评估最近 40 个交易日
 MIN_SIGNALS = 1       # 最少信号次数
 
 
-def api(path: str, params: dict) -> dict:
-    r = requests.get(BASE + path, params=params,
-                     headers={"X-api-key": get_api_key()}, timeout=30)
-    return r.json()
+def _em_finance(report_name: str, code: str, sort_col: str,
+                columns: str, page_size: int = 12) -> list[dict]:
+    """东财数据中心接口（业绩报表/资产负债表），按公告日期倒序。"""
+    r = requests.get(EM_DATA, params={
+        "reportName": report_name, "columns": columns,
+        "filter": f'(SECURITY_CODE="{code}")',
+        "pageNumber": 1, "pageSize": page_size,
+        "sortColumns": sort_col, "sortTypes": "-1"}, timeout=15)
+    d = r.json()
+    return (d.get("result") or {}).get("data") or []
 
 
 def available_report(signal_date: str) -> str:
@@ -36,20 +40,68 @@ def available_report(signal_date: str) -> str:
     return f"{y - 1}-4"        # 1-4月：前一年年报
 
 
-def fetch_indicators(code: str, report: str) -> dict | None:
+def fetch_indicators(code: str, signal_date: str) -> dict | None:
+    """信号日已披露的最新报告期指标（业绩报表 + 资产负债表算负债率）。"""
     try:
-        d = api("/api/a-share/financials/indicators",
-                {"thscode": ths_code(code), "report": report})
-        if d.get("code") != 0:
+        rows = _em_finance(
+            "RPT_LICO_FN_CPD", code, "UPDATE_DATE",
+            "SECURITY_CODE,UPDATE_DATE,REPORTDATE,YSTZ,SJLTZ,XSMLL,"
+            "WEIGHTAVG_ROE")
+        rec = None
+        for row in rows:                      # UPDATE_DATE 倒序
+            upd = (row.get("UPDATE_DATE") or "")[:10]
+            if upd and upd <= signal_date:
+                # 同一公告日可能带多行（新旧报告期），取报告期最新者
+                rd = (row.get("REPORTDATE") or "")[:10]
+                if rec is None or rd > (rec.get("REPORTDATE") or "")[:10]:
+                    rec = row
+        if rec is None:
+            # 兜底：按披露规则找对应报告期（公告日期缺失时）
+            end = _period_end(available_report(signal_date))
+            for row in rows:
+                if (row.get("REPORTDATE") or "")[:10] == end:
+                    rec = row
+                    break
+        if rec is None:
             return None
-        data = d.get("data") or {}
-        out = {"report": data.get("report")}
-        for ab in data.get("abilities") or []:
-            inds = {i["index_id"]: i["value"] for i in ab["indicators"]}
-            out[ab["ability"]] = inds
-        return out
+        debt = None
+        try:
+            bal = _em_finance(
+                "RPT_DMSK_FN_BALANCE", code, "REPORT_DATE",
+                "SECURITY_CODE,REPORT_DATE,TOTAL_ASSETS,TOTAL_LIABILITIES")
+            end = (rec.get("REPORTDATE") or "")[:10]
+            for row in bal:
+                if (row.get("REPORT_DATE") or "")[:10] == end:
+                    assets = row.get("TOTAL_ASSETS")
+                    liab = row.get("TOTAL_LIABILITIES")
+                    if assets:
+                        debt = liab / assets * 100
+                    break
+        except Exception:  # noqa: BLE001
+            debt = None
+        return {
+            "report": (rec.get("REPORTDATE") or "")[:10],
+            "growth": {
+                "calculate_operating_income_yoy_growth_ratio":
+                    rec.get("YSTZ"),
+                "calculate_parent_holder_net_profit_yoy_growth_ratio":
+                    rec.get("SJLTZ"),
+            },
+            "profitability": {
+                "sale_gross_margin": rec.get("XSMLL"),
+                "index_weighted_avg_roe": rec.get("WEIGHTAVG_ROE"),
+            },
+            "solvency": {"assets_debt_ratio": debt},
+        }
     except Exception:  # noqa: BLE001
         return None
+
+
+def _period_end(report: str) -> str:
+    """'2026-2' -> '2026-06-30'。"""
+    y, q = map(int, report.split("-"))
+    return {"1": f"{y}-03-31", "2": f"{y}-06-30",
+            "3": f"{y}-09-30", "4": f"{y}-12-31"}[str(q)]
 
 
 def g(d: dict, key: str) -> float:
@@ -126,38 +178,40 @@ def run() -> str:
 
     rows = []
     track_map = _track_map()
-    for i, code in enumerate(codes):
-        report = available_report(latest_signal[code])
-        f = fetch_indicators(code, report)
-        if f is None:
-            f = fetch_indicators(code, f"{int(report[:4]) - 1}-4")
-        score, grade = quality_score(f)
-        growth = (f.get("growth") or {}) if f else {}
-        prof = (f.get("profitability") or {}) if f else {}
-        solv = (f.get("solvency") or {}) if f else {}
-        rows.append({
-            "code": code,
-            "signals": cnt[code],
-            "营收同比%": round(g(growth, "calculate_operating_income_yoy_growth_ratio"), 1),
-            "净利同比%": round(g(growth, "calculate_parent_holder_net_profit_yoy_growth_ratio"), 1),
-            "毛利率%": round(g(prof, "sale_gross_margin"), 1),
-            "ROE%": round(g(prof, "index_weighted_avg_roe"), 1),
-            "负债率%": round(g(solv, "assets_debt_ratio"), 1),
-            "质量分": score, "评级": grade,
-            "归类": classify(cnt[code], grade),
-            "赛道": track_map.get(code, "待核验"),
-            "报告期": f.get("report", "-") if f else "-",
-        })
-        if (i + 1) % 20 == 0:
-            print(f"  已评估 {i + 1}/{len(codes)}")
-        time.sleep(0.1)
+    done = 0
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        futs = {ex.submit(fetch_indicators, code,
+                          latest_signal[code]): code for code in codes}
+        for fut in as_completed(futs):
+            code = futs[fut]
+            f = fut.result()
+            done += 1
+            score, grade = quality_score(f)
+            growth = (f.get("growth") or {}) if f else {}
+            prof = (f.get("profitability") or {}) if f else {}
+            solv = (f.get("solvency") or {}) if f else {}
+            rows.append({
+                "code": code,
+                "signals": cnt[code],
+                "营收同比%": round(g(growth, "calculate_operating_income_yoy_growth_ratio"), 1),
+                "净利同比%": round(g(growth, "calculate_parent_holder_net_profit_yoy_growth_ratio"), 1),
+                "毛利率%": round(g(prof, "sale_gross_margin"), 1),
+                "ROE%": round(g(prof, "index_weighted_avg_roe"), 1),
+                "负债率%": round(g(solv, "assets_debt_ratio"), 1),
+                "质量分": score, "评级": grade,
+                "归类": classify(cnt[code], grade),
+                "赛道": track_map.get(code, "待核验"),
+                "报告期": f.get("report", "-") if f else "-",
+            })
+            if done % 20 == 0:
+                print(f"  已评估 {done}/{len(codes)}")
 
     df = pd.DataFrame(rows).sort_values(["归类", "质量分"], ascending=[True, False])
     date = datetime.now().strftime("%Y-%m-%d")
     path = paths.report_dir() / f"信号评估_{date}.md"
     lines = [f"# 主升浪信号标的评估（{date}）",
              f"> 范围：最近 {RECENT_DAYS} 个交易日主升浪信号标的 {len(df)} 只",
-             "> 方法：同花顺财务指标（**信号日已披露报告期**，避免前视偏差）质量评分 + 信号频次归类",
+             "> 方法：东方财富财务指标（**公告日期 ≤ 信号日**的最新报告期，避免前视偏差）质量评分 + 信号频次归类",
              "> 免责：仅研究线索，不构成投资建议；赛道标注『待核验』需人工确认",
              "",
              "## 一、重点线索（A级财务 + 有信号）", ""]

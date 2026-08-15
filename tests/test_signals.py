@@ -7,8 +7,9 @@ import pandas as pd
 from mainrise.signals import in_universe, row_status, tail_features
 
 
-def make_panel(closes, code="601899"):
+def make_panel(closes, code="601899", volumes=None):
     n = len(closes)
+    vols = volumes or [1_000_000] * n
     return pd.DataFrame({
         "code": [code] * n,
         "date": pd.date_range("2026-01-01", periods=n).strftime("%Y-%m-%d"),
@@ -16,7 +17,7 @@ def make_panel(closes, code="601899"):
         "high": [c * 1.01 for c in closes],
         "low": [c * 0.99 for c in closes],
         "close": closes,
-        "volume": [1_000_000] * n,
+        "volume": vols,
         "prev_close": [closes[0]] + list(closes[:-1]),
     })
 
@@ -48,39 +49,91 @@ class TestTailFeatures(unittest.TestCase):
         self.assertTrue(bool(last["chg"] >= 5))
         self.assertTrue(bool(last["bull"]))
 
+    def test_limit_up_requires_volume(self):
+        closes = list(range(10, 55))
+        closes[-1] = closes[-2] * 1.10          # 涨停
+        # 缩量涨停（量比<1.0）不计信号
+        t = tail_features(make_panel(closes, volumes=[1_000_000] * 44 + [50_000]))
+        self.assertFalse(bool(t.iloc[-1]["signal"]))
+        # 放量涨停（量比>=1.0）计信号
+        t2 = tail_features(make_panel(closes, volumes=[1_000_000] * 44 + [2_000_000]))
+        self.assertTrue(bool(t2.iloc[-1]["signal"]))
+
+    def test_b3_flag(self):
+        """B3：均线粘合 + 放量阳线站上三均线 + 低位。"""
+        n = 100
+        closes = [10.0 + (i % 5) * 0.01 for i in range(n)]   # 横盘 → 均线粘合
+        closes[-1] = 10.30                                   # 尾日放量阳线上穿
+        opens = [10.0] * (n - 1) + [10.10]
+        vols = [1_000_000] * (n - 1) + [2_200_000]
+        panel = make_panel(closes, volumes=vols)
+        panel["open"] = opens
+        t = tail_features(panel)
+        last = t.iloc[-1]
+        self.assertTrue(bool(last["b3"]))
+        self.assertFalse(bool(last["wave2"]))
+
+    def test_wave2_after_b3_pullback(self):
+        """二波：B3 后回调、均线再次粘合、缩量 → 再放量阳线启动。"""
+        n = 140
+        closes = [10.0 + (i % 5) * 0.01 for i in range(n)]
+        b3d = n - 30
+        closes[b3d] = 10.30                    # B3 日
+        # B3 后先冲一浪高点（10.55）再回调约 7%（到 9.80），缩量横盘后二波启动
+        closes[b3d + 1] = 10.55
+        for k in range(2, 10):
+            closes[b3d + k] = 10.55 * (1 - 0.01 * (k - 1))
+        for k in range(10, n - b3d - 1):
+            closes[b3d + k] = 9.80
+        closes[-1] = 10.05                     # 触发日：放量阳线站上均线
+        opens = [10.0] * (n - 1) + [9.85]
+        vols = [1_000_000] * n
+        vols[b3d] = 2_200_000
+        for k in range(1, n - b3d - 1):
+            vols[b3d + k] = max(500_000, int(1_000_000 * (1 - 0.05 * k)))
+        vols[-1] = 1_600_000
+        panel = make_panel(closes, volumes=vols)
+        panel["open"] = opens
+        t = tail_features(panel)
+        self.assertTrue(bool(t.iloc[-1]["wave2"]))
+
 
 class TestRowStatus(unittest.TestCase):
     def _row(self, **kw):
         base = {"close": 10.0, "low": 9.9, "ma5": 9.8, "ma10": 9.5, "ma20": 9.0,
-                "vol_ratio": 0.8, "chg10": 10.0, "signal": False, "prev_close": 9.9,
-                "bull": True}
+                "vol_ratio": 0.8, "chg10": 10.0, "b3": False, "wave2": False,
+                "prev_close": 9.9}
         base.update(kw)
         return pd.Series(base)
 
-    def test_bull_hold(self):
+    def test_observe_default(self):
         label, hint = row_status(self._row(), False)
-        self.assertEqual(label, "多头持有")
-        self.assertIn("MA10", hint)
+        self.assertEqual(label, "观察")
+        self.assertIn("B3", hint)
 
-    def test_pullback_buy(self):
-        label, hint = row_status(self._row(close=9.6, low=9.1, ma5=9.8, vol_ratio=0.6), False)
-        self.assertEqual(label, "回踩低吸")
-        self.assertIn("买点2", hint)
+    def test_b3_base(self):
+        label, hint = row_status(self._row(b3=True), False)
+        self.assertEqual(label, "B3打底仓")
+        self.assertIn("打底仓", hint)
 
-    def test_broken_ma20(self):
-        label, _ = row_status(self._row(close=8.5, ma20=9.0), False)
-        self.assertEqual(label, "破位")
+    def test_wave2_add(self):
+        label, hint = row_status(self._row(wave2=True), False)
+        self.assertEqual(label, "二波加仓")
+        self.assertIn("加仓", hint)
 
-    def test_t0_signal(self):
-        label, _ = row_status(self._row(signal=True), False)
-        self.assertEqual(label, "T0新信号")
-
-    def test_t1_confirm(self):
+    def test_prev_b3_waiting(self):
         label, _ = row_status(self._row(), True)
-        self.assertEqual(label, "T1确认买点")
+        self.assertEqual(label, "B3待二波")
 
     def test_extended_10d_warning(self):
-        label, hint = row_status(self._row(signal=True, chg10=120.0), False, max_10d=80)
+        label, hint = row_status(self._row(b3=True, chg10=120.0), False, max_10d=80)
+        self.assertIn("涨幅过大", hint)
+
+    def test_max_10d_default_relaxed(self):
+        # 默认阈值 150%：120% 不再提示"涨幅过大"
+        label, hint = row_status(self._row(b3=True, chg10=120.0), False)
+        self.assertNotIn("涨幅过大", hint)
+        label, hint = row_status(self._row(b3=True, chg10=160.0), False)
         self.assertIn("涨幅过大", hint)
 
 

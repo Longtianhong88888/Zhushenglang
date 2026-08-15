@@ -11,3 +11,9 @@ build/
 .env
 *.egg-info/
 *.spec
+.serverchan_key
+.wecom_webhook
+.hithink_key
+settings.json
+.monitor_env
+.feishu_webhook

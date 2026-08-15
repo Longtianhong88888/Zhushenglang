@@ -1,21 +1,17 @@
-"""同花顺实时行情快照（验证买点涨跌幅用）。"""
+"""实时行情快照（腾讯 qt.gtimg.cn，无需 API Key，股票/ETF 统一接口）。"""
 from __future__ import annotations
-
-import os
 
 import numpy as np
 import pandas as pd
 import requests
 
-BASE = "https://fuyao.aicubes.cn"
+TX_QUOTE = "https://qt.gtimg.cn/q="
+BATCH = 50          # 单请求批量上限（实测 60 条稳定）
 
 
 def get_api_key() -> str:
-    key = (os.environ.get("MAINRISE_API_KEY", "")
-           or os.environ.get("FUYAO_API_KEY", "")).strip()
-    if not key:
-        raise RuntimeError("缺少 API key：请设置环境变量 MAINRISE_API_KEY")
-    return key
+    """腾讯接口无需 key；保留该函数仅为兼容旧调用，返回空串。"""
+    return ""
 
 
 def ths_code(code: str) -> str:
@@ -39,50 +35,72 @@ def is_etf(code: str) -> bool:
     return c.startswith(("51", "56", "58", "15"))
 
 
-def fetch_snapshot(codes: list[str], key: str | None = None) -> pd.DataFrame:
-    """行情快照（当日实时）。股票走 a-share 端点，ETF/LOF 走 fund 端点。"""
-    key = key or get_api_key()
-    frames = []
-    for code in codes:
-        fund = is_etf(code)
-        path = "/api/fund/market/snapshot" if fund else "/api/a-share/prices/snapshot"
-        params = {"thscode": ths_code(code)} if fund else {"thscodes": ths_code(code)}
+def tx_code(code: str) -> str:
+    """腾讯行情代码：sh/sz/bj + 6 位数字。"""
+    num, market = ths_code(code).split(".")
+    return market.lower() + num
+
+
+def _parse_quote(line: str, code: str) -> dict:
+    """解析腾讯报价串（~ 分隔），缺失字段置 NaN。"""
+    f = line.split("~")
+
+    def num(i: int) -> float:
         try:
-            r = requests.get(f"{BASE}{path}",
-                             params=params, headers={"X-api-key": key}, timeout=30)
-            d = r.json()
-            if d.get("code") != 0:
-                frames.append(pd.DataFrame([{
-                    "code": code, "close": np.nan, "price_change": np.nan,
-                    "price_change_ratio_pct": np.nan, "open": np.nan,
-                    "high": np.nan, "low": np.nan, "prev_close": np.nan,
-                    "volume": np.nan, "turnover": np.nan,
-                    "error": f"code={d.get('code')} {d.get('message', '')}"}]))
-                continue
-            items = (d.get("data") or {}).get("item") or []
-            if not items:
-                frames.append(pd.DataFrame([{
-                    "code": code, "close": np.nan, "error": "无数据"}]))
-                continue
-            df = pd.DataFrame(items)
-            df["code"] = df["ticker"].astype(str)
-            df = df.rename(columns={
-                "last_price": "close",
-                "open_price": "open",
-                "high_price": "high",
-                "low_price": "low",
-                "prev_price": "prev_close",
-            })
-            keep = [c for c in ["code", "close", "price_change",
-                                "price_change_ratio_pct", "open", "high",
-                                "low", "prev_close", "volume", "turnover"]
-                    if c in df.columns]
-            df = df[keep]
-            df["error"] = ""
-            frames.append(df)
+            v = f[i].strip()
+            return float(v) if v not in ("", "-") else np.nan
+        except (IndexError, TypeError, ValueError):
+            return np.nan
+
+    close = num(3)
+    prev_close = num(4)
+    return {
+        "code": code,
+        "close": close,
+        "price_change": close - prev_close,
+        "price_change_ratio_pct": num(32),
+        "open": num(5),
+        "high": num(33),
+        "low": num(34),
+        "prev_close": prev_close,
+        "volume": num(6),       # 手
+        "turnover": num(37),    # 万元
+        "error": "",
+    }
+
+
+def fetch_snapshot(codes: list[str], key: str | None = None) -> pd.DataFrame:
+    """行情快照（当日实时）：腾讯单接口批量，股票/ETF 通用，无 key。"""
+    rows = []
+    for i in range(0, len(codes), BATCH):
+        batch = codes[i:i + BATCH]
+        rev = {tx_code(c): c for c in batch}
+        try:
+            r = requests.get(TX_QUOTE + ",".join(rev), timeout=8)
+            r.encoding = "gbk"
+            text = r.text
         except Exception as e:  # noqa: BLE001
-            frames.append(pd.DataFrame([{
-                "code": code, "close": np.nan, "error": f"{type(e).__name__}: {e}"}]))
-    if not frames:
-        return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True)
+            text = ""
+            err = f"{type(e).__name__}: {e}"
+            for code in batch:
+                rows.append({"code": code, "close": np.nan, "error": err})
+            continue
+        parsed = set()
+        for line in text.strip().split(";"):
+            if "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            tx = k.strip()[2:]        # v_sh600519 -> sh600519
+            code = rev.get(tx)
+            if code:
+                rows.append(_parse_quote(v.strip().strip('"'), code))
+                parsed.add(code)
+        for code in batch:
+            if code not in parsed:
+                rows.append({"code": code, "close": np.nan, "error": "无数据"})
+    if not rows:
+        return pd.DataFrame(columns=["code", "close", "price_change",
+                                     "price_change_ratio_pct", "open",
+                                     "high", "low", "prev_close", "volume",
+                                     "turnover", "error"])
+    return pd.DataFrame(rows)

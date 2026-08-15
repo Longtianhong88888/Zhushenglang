@@ -18,12 +18,20 @@ else
 fi
 # 仪表盘模板（每日跟踪后同步更新仪表盘需要）
 ADD_DATA+=(--add-data "mainrise/resources/dashboard_template.xlsx:mainrise/resources")
+# 应用图标与启动画面
+ADD_DATA+=(--add-data "mainrise/resources/app_icon.png:mainrise/resources")
+ADD_DATA+=(--add-data "mainrise/resources/splash.png:mainrise/resources")
+# KLineChart 看盘套件（标的详情页 K线内联渲染）
+ADD_DATA+=(--add-data "mainrise/resources/klinecharts.min.js:mainrise/resources")
+# 行业卡点企业名单（110 家；缺失则 GUI 卡点范围静默缩水到内置兜底 36 只）
+ADD_DATA+=(--add-data "mainrise/resources/industry_info.csv:mainrise/resources")
 
 "$PYTHON" -m PyInstaller \
   --windowed \
   --onedir \
   --noconfirm \
   --name "主升浪跟踪" \
+  --icon "mainrise/resources/app.icns" \
   --clean \
   --collect-all zzshare \
   --hidden-import tqdm \

@@ -22,9 +22,9 @@ def _watch_csv(day: str, closes: list) -> list:
         close = closes[i % len(closes)]
         status, hint, chg10 = "空头", "均线未多头，观望", 2.0
         if code == "000002":
-            status, hint, chg10 = "T1确认买点", "买点1：明日开盘买入", 5.0
+            status, hint, chg10 = "二波加仓", "最优买点：明日开盘加仓", 5.0
         elif code == "000003":
-            status, hint, chg10 = "回踩低吸", "买点2：MA10附近缩量企稳", 10.0
+            status, hint, chg10 = "B3打底仓", "均线粘合爆量突破：明日打底仓", 10.0
         rows.append([code, name, comp, close, 1.0, status, hint,
                      10.0, 9.5, 1.2, chg10])
     return rows
@@ -35,7 +35,7 @@ def _positions_csv() -> list:
              "buy_date", "buy_price", "peak", "peak_date", "status",
              "close_date", "close_price", "reason"],
             ["000002", "万科A", "", "", 2, "2026-08-04", 10.0,
-             11.0, "2026-08-05", "active", "", "", "回踩低吸"]]
+             11.0, "2026-08-05", "active", "", "", "B3打底仓"]]
 
 
 def _write(reports: Path, states: Path) -> None:
@@ -78,7 +78,7 @@ class TestDashboard(unittest.TestCase):
             # 图表引用随天数伸缩（n=2：持仓 P 区间起始行=17）
             with zipfile.ZipFile(out) as z:
                 chart3 = z.read("xl/charts/chart3.xml").decode("utf-8")
-            self.assertIn("Summary!$P$17:$P$18", chart3)
+            self.assertIn("Summary!$P$14:$P$15", chart3)
             self.assertIn("Summary!$L$2:$L$3", chart3)
 
     def test_growth_updates_latest_row(self):
@@ -104,7 +104,7 @@ class TestDashboard(unittest.TestCase):
                 chart1 = z.read("xl/charts/chart1.xml").decode("utf-8")
                 chart3 = z.read("xl/charts/chart3.xml").decode("utf-8")
             self.assertIn("Summary!$D$2:$D$4", chart1)
-            self.assertIn("Summary!$P$18:$P$20", chart3)
+            self.assertIn("Summary!$P$15:$P$17", chart3)
 
     def test_dynamic_watchlist_size(self):
         """观察池数量不再写死 36：按“有综合分的连续行”自动判定。"""
@@ -118,12 +118,12 @@ class TestDashboard(unittest.TestCase):
             for i in range(1, 41):  # 40 只观察池
                 status, hint, chg10 = "空头", "均线未多头，观望", 2.0
                 if i == 5:
-                    status, hint, chg10 = "T1确认买点", "买点1：明日开盘买入", 5.0
+                    status, hint, chg10 = "二波加仓", "最优买点：明日开盘加仓", 5.0
                 rows.append([f"0000{i:02d}", f"股{i}", 70.0 + i, 10.0, 1.0,
                              status, hint, 10.0, 9.5, 1.2, chg10])
             for i in range(41, 44):  # 3 只新信号（综合分为空）
                 rows.append([f"0000{i:02d}", f"新{i}", "", "", 5.0,
-                             "T0新信号", "新信号，待财务评估后入池", "", "", 2.0, 8.0])
+                             "B3打底仓", "新信号，待财务评估后入池", "", "", 2.0, 8.0])
             with open(reports / "主升浪跟踪_2026-08-04.csv", "w", newline="",
                       encoding="utf-8") as f:
                 csv.writer(f).writerows(rows)
@@ -133,9 +133,9 @@ class TestDashboard(unittest.TestCase):
             self.assertEqual(data["B2"].value, "观察池")
             self.assertEqual(data["B41"].value, "观察池")
             self.assertEqual(data["B42"].value, "新信号")
-            self.assertEqual(data["N6"].value, 6)  # 第 5 只（T1买点）-> Data 行 6
+            self.assertEqual(data["N6"].value, 6)  # 第 5 只（二波加仓）-> Data 行 6
             summ = wb["Summary"]
-            self.assertIn("观察池40只/日", summ["A12"].value)  # n=1 时脚注在 A12
+            self.assertIn("观察池40只/日", summ["A9"].value)  # n=1 时脚注在 A9
             self.assertIn('"新信号"', summ["J2"].value)
             watch = wb["Watch"]
             self.assertEqual(watch["A2"].value, "000040")   # 综合分最高排最前

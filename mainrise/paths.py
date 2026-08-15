@@ -11,6 +11,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+# 测试注入点：优先于一切路径解析（tests 设置后数据写入临时目录，
+# 避免污染真实 output/）。用后必须清回 None。
+_OVERRIDE: Path | None = None
+
 
 def _project_root() -> Path | None:
     cwd = Path.cwd()
@@ -25,6 +29,8 @@ def _is_project_home(h: Path) -> bool:
 
 
 def home() -> Path:
+    if _OVERRIDE is not None:
+        return _OVERRIDE
     env = os.environ.get("MAINRISE_HOME", "").strip()
     if env:
         return Path(env).expanduser()
@@ -43,6 +49,8 @@ def zzshare_dir() -> Path:
 
 
 def report_dir() -> Path:
+    if _OVERRIDE is not None:
+        return _OVERRIDE / "output" / "reports"
     env = os.environ.get("MAINRISE_HOME", "").strip()
     if env and _is_project_home(Path(env).expanduser()):
         return Path(env).expanduser() / "output" / "reports"
@@ -52,12 +60,26 @@ def report_dir() -> Path:
 
 
 def state_dir() -> Path:
+    if _OVERRIDE is not None:
+        return _OVERRIDE / "output" / "state"
     env = os.environ.get("MAINRISE_HOME", "").strip()
     if env and _is_project_home(Path(env).expanduser()):
         return Path(env).expanduser() / "output" / "state"
     if _project_root() is not None:
         return home() / "output" / "state"
     return home() / "state"
+
+
+def web_dir() -> Path:
+    """网页仪表盘输出目录（Nginx 直接托管此目录）。"""
+    if _OVERRIDE is not None:
+        return _OVERRIDE / "output" / "web"
+    env = os.environ.get("MAINRISE_HOME", "").strip()
+    if env and _is_project_home(Path(env).expanduser()):
+        return Path(env).expanduser() / "output" / "web"
+    if _project_root() is not None:
+        return home() / "output" / "web"
+    return home() / "web"
 
 
 def stock_list_path() -> Path:
@@ -69,5 +91,5 @@ def trade_dates_path() -> Path:
 
 
 def ensure_dirs() -> None:
-    for p in (home(), data_dir(), zzshare_dir(), report_dir(), state_dir()):
+    for p in (home(), data_dir(), zzshare_dir(), report_dir(), state_dir(), web_dir()):
         p.mkdir(parents=True, exist_ok=True)

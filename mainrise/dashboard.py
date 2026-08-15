@@ -37,9 +37,9 @@ QUANTDARK_TEMPLATE_NAME = "主升浪跟踪仪表盘_QuantDark.xlsx"
 OUTPUT_NAME = "主升浪跟踪仪表盘.xlsx"
 TRACK_PREFIX = "主升浪跟踪_"
 
-BUY_STATUSES = ("T1确认买点", "T0新信号", "回踩低吸")
-STATUSES = ("空头", "破位", "多头持有", "回踩低吸", "多头回踩", "T1确认买点", "T0新信号")
-DEFAULT_MAX_10D_GAIN = 80.0
+BUY_STATUSES = ("B3打底仓", "二波加仓")
+STATUSES = ("观察", "B3待二波", "B3打底仓", "二波加仓")
+DEFAULT_MAX_10D_GAIN = 150.0  # 与 tracker.MAX_10D_GAIN 一致（2026-08 研究放宽）
 
 # 模板"原型"坐标：n=3 天时 Summary 布局与模板完全一致，n 增大时作为样式复制来源
 PER_DAY_PROTO = {c: f"{c}2" for c in "ABCDEFGHIJKL"}
@@ -278,9 +278,9 @@ def _fill_summary(ws, dates: list[date], pos: dict, watch_size: int) -> dict:
              f'=COUNTIFS(Data!$A$2:$A${MAX_DATA_ROW},$A{r},Data!$B$2:$B${MAX_DATA_ROW},"观察池",Data!$G$2:$G${MAX_DATA_ROW},">0")',
              PER_DAY_PROTO["E"])
         _put(ws, f"F{r}",
-             f'=COUNTIFS(Data!$A$2:$A${MAX_DATA_ROW},$A{r},Data!$B$2:$B${MAX_DATA_ROW},"观察池",Data!$H$2:$H${MAX_DATA_ROW},"T1确认买点",Data!$M$2:$M${MAX_DATA_ROW},"<{DEFAULT_MAX_10D_GAIN}")'
-             f'+COUNTIFS(Data!$A$2:$A${MAX_DATA_ROW},$A{r},Data!$B$2:$B${MAX_DATA_ROW},"观察池",Data!$H$2:$H${MAX_DATA_ROW},"T0新信号",Data!$M$2:$M${MAX_DATA_ROW},"<{DEFAULT_MAX_10D_GAIN}")'
-             f'+COUNTIFS(Data!$A$2:$A${MAX_DATA_ROW},$A{r},Data!$B$2:$B${MAX_DATA_ROW},"观察池",Data!$H$2:$H${MAX_DATA_ROW},"回踩低吸",Data!$M$2:$M${MAX_DATA_ROW},"<{DEFAULT_MAX_10D_GAIN}")',
+             f'=COUNTIFS(Data!$A$2:$A${MAX_DATA_ROW},$A{r},Data!$B$2:$B${MAX_DATA_ROW},"观察池",Data!$H$2:$H${MAX_DATA_ROW},"B3待二波",Data!$M$2:$M${MAX_DATA_ROW},"<{DEFAULT_MAX_10D_GAIN}")'
+             f'+COUNTIFS(Data!$A$2:$A${MAX_DATA_ROW},$A{r},Data!$B$2:$B${MAX_DATA_ROW},"观察池",Data!$H$2:$H${MAX_DATA_ROW},"B3打底仓",Data!$M$2:$M${MAX_DATA_ROW},"<{DEFAULT_MAX_10D_GAIN}")'
+             f'+COUNTIFS(Data!$A$2:$A${MAX_DATA_ROW},$A{r},Data!$B$2:$B${MAX_DATA_ROW},"观察池",Data!$H$2:$H${MAX_DATA_ROW},"二波加仓",Data!$M$2:$M${MAX_DATA_ROW},"<{DEFAULT_MAX_10D_GAIN}")',
              PER_DAY_PROTO["F"])
         _put(ws, f"G{r}",
              f'=COUNTIFS(Data!$A$2:$A${MAX_DATA_ROW},$A{r},Data!$B$2:$B${MAX_DATA_ROW},"观察池",Data!$H$2:$H${MAX_DATA_ROW},"破位")',
@@ -316,7 +316,7 @@ def _fill_summary(ws, dates: list[date], pos: dict, watch_size: int) -> dict:
     _put(ws, f"A{note_row}",
          f"数据源: output/reports/主升浪跟踪_{date_str}.csv（观察池{watch_size}只/日 + 全市场新信号按日计入）；"
          "涨跌幅/10日涨幅为百分数（8.83 即 8.83%）；"
-         f"买点提示=观察池中 T0/T1/回踩低吸 且 10日涨幅<{DEFAULT_MAX_10D_GAIN:g}%（防追高）。",
+         f"买点提示=观察池中 B3 打底仓 / 二波加仓 且 10日涨幅<{DEFAULT_MAX_10D_GAIN:g}%（防追高）。",
          NOTE_PROTO)
 
     # 图表辅助数据：持仓收益
@@ -377,7 +377,7 @@ def _fill_dashboard(ws, n: int, pos: dict, buy_count: int, layout: dict, dates: 
     date_str = "/".join(d.isoformat() for d in dates)
     ws["B32"] = (f"主升浪信号跟踪 KPI 仪表盘（数据源: output/reports/主升浪跟踪_{date_str}.csv"
                  " + output/state/mainrise_positions.csv；涨跌幅/10日涨幅为百分数，如 8.83 即 8.83%）")
-    ws["B33"] = ("买点明细=最新日观察池内 T0/T1/回踩低吸 且 "
+    ws["B33"] = ("买点明细=最新日观察池内 B3 打底仓 / 二波加仓 且 "
                  f"10日涨幅<{DEFAULT_MAX_10D_GAIN:g}%（防追高）；"
                  f"持仓收益=每日收盘/买入价-1（买入价 {pos['buy_price']:g}，来源 positions.csv）；"
                  "免责：研究线索，不构成投资建议")

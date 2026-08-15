@@ -44,21 +44,14 @@ Windows 版在 Windows 电脑上运行 `build_gui_windows.bat`，产物
 - 如需带内置数据的完整版，在 Windows 机器本地跑 `build_gui_windows.bat`
   （默认包含数据包），或设置 `SKIP_BUNDLE=1` 跳过数据做轻量版
 
-### 方式二：独立命令行（免装 Python）
+### 方式二：桌面图形界面（.app / .exe）
 
-在 macOS 上执行 `./build_macos.sh`，产物为单文件 `dist/mainrise`（约 63MB，已内置
-Python 解释器与全部依赖）。把该文件拷到任何 macOS 电脑：
-
-```bash
-chmod +x mainrise
-./mainrise init       # 首次自动下载 2021 起全市场日线（约 650MB，视网速 10~40 分钟）
-./mainrise track      # 每日收盘后运行，生成报告
-```
-
-Windows 版需要在 Windows 电脑上执行 `build_windows.bat`，产物 `dist\mainrise.exe`；
+macOS：执行 `./build_gui_macos.sh`，产物 `dist/主升浪跟踪.app`（onedir，含内置
+行情数据与仪表盘模板，Finder 双击即用；`SKIP_BUNDLE=1` 可做轻量版）。
+Windows：执行 `build_gui_windows.bat`，产物 `dist\mainrise_gui\mainrise_gui.exe`；
 PyInstaller 打包是平台相关的，不能跨系统复用。
 
-### 方式二：pip 安装（需 Python 3.9+）
+### 方式三：pip 安装（需 Python 3.9+）
 
 ```bash
 pip install .         # 或 pip install -e .（开发模式）
@@ -79,23 +72,34 @@ mainrise track
 mainrise init         # 首次初始化：交易日历 + 股票名册 + 全量行情（需联网）
 mainrise update       # 增量更新行情
 mainrise backtest     # 回测（生成 mainrise_trades.csv，供评估用）
-mainrise evaluate     # 信号日财务评估（需 MAINRISE_API_KEY）
+mainrise evaluate     # 信号日财务评估（东财公开接口，无需 key）
 mainrise report       # 综合评分 + 观察池
 mainrise track        # 每日跟踪：买点提示 / 纸面持仓 / 新信号扫描
-mainrise snapshot 601899 000975   # 实时行情验证（需 MAINRISE_API_KEY）
+mainrise snapshot 601899 000975   # 实时行情验证（腾讯接口，无需 key）
 mainrise gui                      # 打开图形界面软件
 ```
 
-同花顺 API key（`evaluate`/`snapshot` 用）通过环境变量 `MAINRISE_API_KEY` 提供，
-不写入任何文件。`init`/`update`/`track` 使用免费 zzshare 数据，无需 key。
+数据源已全部改为公开接口，无需任何 API Key：实时行情/日K/分时用腾讯，
+财务评估/涨停池/龙虎榜/资金流用东方财富，历史日线用免费 zzshare 数据。
+`MAINRISE_API_KEY` 仅保留兼容旧环境（可留空）。
 
 ## 信号规则
 
-- **信号日 T0**：均线多头（MA5>MA10>MA20）+ 收盘创 20 日新高 +（涨幅≥5% 且量比≥1.5）或涨停
-- **买点1**：T0 次日确认（收盘>MA5 且 低点≥T0 收盘×0.97）→ 次日开盘买入
-- **买点2**：确认后回踩 MA10 缩量企稳（低点≥MA20×0.99）→ 低吸
-- **纪律**：止损 -5% 或跌破 MA10；止盈高点回落 8%；5 日时间止损；单票 ≤1/3 仓，最多 3 只并行
-- **防追高**：10 个交易日涨幅 ≥80% 的标的自动移出买点提示（`--max-10d-gain` 可调）
+### 大牛模型（行业卡点企业，97 只可交易）
+
+- **追踪范围**：行业卡点企业（110 家名单，排除 301/688 后 97 只可交易，300 可交易）
+- **硬规则**：热主题（AI硬件/半导体/存储，固定三主题）且 90 日内累计 T0 信号 ≥3
+- **评分 ≥2**：热主题 +1 ｜ 90日T0≥3 +1 ｜ 创60日新高且10日<30% +1 ｜ 链长≥4 +1
+- **T0 信号**：均线多头（MA5>MA10>MA20）+ 收盘创 20 日新高 +（大阳线=涨幅≥5% 且量比≥1.5）或（涨停且量比≥1.0）
+- **仓位**：单票 1/3 仓，最多 3 只并行；**退出**：收盘跌破 MA20；杀跌区（大盘20日≤-5%）停开
+- **费用**：0.2%/笔双边；回测 2021-08 起 +777%（年化 +50%，MDD -34%）
+- **防追高**：10 个交易日涨幅 ≥150% 的标的自动移出买点提示
+
+### 框架（B3 打底仓 / 二波加仓）
+
+- **第一级 B3**：均线粘合≤3% + 阳线 + 量比≥2 + 涨幅≥1% + 收盘站上三均线 + 距60日低点<30% → 明日开盘打底仓（2/3）
+- **第二级 二波**：B3 后 3~30 日内 深回调 2-12% + 均线再次粘合≤2% + 缩量 → 放量再启动 → 明日开盘加仓（1/3）
+- **纪律**：止损 -4%（盘中低点）；止盈高点回落 8%（收盘口径）；20 日时间止损让赢家跑；单票 ≤1/3 仓，最多 3 只并行
 
 ## 目录结构
 
@@ -106,18 +110,16 @@ mainrise/
   data.py                zzshare 数据层：交易日历/股票名册/日线抓取与解压
   signals.py             信号指标（均线/量比/创新高/状态判定）
   tracker.py             每日跟踪：买点提示/纸面持仓/报告（Markdown+CSV+Excel）
-  evaluate.py            信号日财务评估（同花顺 API，无前视）
+  evaluate.py            信号日财务评估（东财接口，按公告日期无前视）
   report.py              综合评分（40%财务+30%信号+30%产业地位）
   backtest.py            参数敏感性回测
-  snapshot.py            实时行情（股票/ETF 自动路由）
+  snapshot.py            实时行情（腾讯 qt.gtimg.cn，股票/ETF 单接口批量）
   gui_pyqt.py            PyQt5 图形界面
   excel_report.py        Excel 报告生成
   resources/             产业链信息 CSV（行业地位可配置）
 scripts/
-  backtest_mainrise.py   主升浪信号回测（参数敏感性 + 年化收益）
-  （旧命令兼容壳，等价 mainrise 子命令）
+  build_bundle.py        内置行情数据包构建（build_gui_macos.sh 调用）
 tests/                   单元测试（信号引擎/快照路由/持仓平仓逻辑）
-docs/                    工作笔记
 data/
   zzshare_daily/         全市场日线缓存（按交易日，2021 起）
   stock_list.csv         代码→名称映射
@@ -136,9 +138,9 @@ python3 -m unittest discover -s tests
 ## 每日运行
 
 ```bash
-python3 scripts/track_mainrise.py     # 每日收盘后跑一次（默认最新缓存交易日）
-python3 scripts/track_mainrise.py --date 2026-08-05   # 指定日期
-python3 scripts/track_mainrise.py --no-scan           # 跳过全市场新信号扫描
+mainrise track      # 每日收盘后跑一次（默认最新缓存交易日）
+mainrise track --date 2026-08-05   # 指定日期
+mainrise track --no-scan           # 跳过全市场新信号扫描
 ```
 
 产出 `output/reports/主升浪跟踪_YYYY-MM-DD.md`：
@@ -153,15 +155,15 @@ python3 scripts/track_mainrise.py --no-scan           # 跳过全市场新信号
 ## 观察池刷新（有新信号或定期）
 
 ```bash
-python3 scripts/evaluate_signals.py    # 最近40交易日信号标的财务评估
-python3 scripts/build_full_report.py   # 综合评分 + 生成 output/state/mainrise_watchlist.csv
+mainrise evaluate    # 最近40交易日信号标的财务评估
+mainrise report      # 综合评分 + 生成 output/state/mainrise_watchlist.csv
 ```
 
 ## 数据源
 
 - **zzshare**（`data/zzshare_daily/`）：全市场日线，含交易所官方涨停价、换手率、ST/停牌标记，2021 起按交易日缓存。
-- **同花顺金融数据 API**（fuyao.aicubes.cn，`X-api-key` 鉴权）：
-  - 行情快照 `/api/a-share/prices/snapshot`（盘中实时验证，如买点验证）
-  - 财务指标（`evaluate_signals.py` 内联调用，按信号日已披露报告期取数）
+- **腾讯公开接口**：实时快照 qt.gtimg.cn、日K/分时 web.ifzq.gtimg.cn、行业/概念板块 proxy.finance.qq.com（均免费无限流）。
+- **东方财富公开接口**：财务指标（RPT_LICO_FN_CPD + 资产负债表）、当日涨停池（getTopicZTPool）、龙虎榜（RPT_DAILYBILLBOARD_DETAILSNEW）、全市场分钟资金流。
+- 历史涨停池（情绪趋势）由本地 zzshare 日线计算（close ≥ limit_price 判定 + 连板累计）。
 
 > 分析结果为研究线索，不构成投资建议；回测未计交易成本/容量，实盘需打 6-7 折验证。

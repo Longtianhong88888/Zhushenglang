@@ -1,0 +1,16 @@
+[Unit]
+Description=Mainrise live market monitor (盘中实时盯盘)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/chaoduan
+EnvironmentFile=-/home/ubuntu/chaoduan/.monitor_env
+ExecStart=/home/ubuntu/chaoduan/venv/bin/python -m mainrise.cli monitor --interval 3
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
