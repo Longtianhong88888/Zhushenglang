@@ -108,8 +108,7 @@ class TestStockPage(unittest.TestCase):
                     {"date": "2026-08-06", "reason": "高点回落8%"}]):
             d = stockpage.build_stock_data("601899")
         self.assertEqual(d["signals"], [
-            {"t0": "2026-08-04", "t1": "2026-08-05", "t2": "2026-08-06",
-             "kind": "B3"}])
+            {"t0": "2026-08-04", "t1": "2026-08-05", "t2": "2026-08-06"}])
         self.assertEqual(d["closes"], [
             {"date": "2026-08-06", "reason": "高点回落8%"}])
 
