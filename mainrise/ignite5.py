@@ -237,19 +237,15 @@ def push_signals(signals: list) -> None:
                          f"涨{ig.get('chg','')}%"
                          f"{' 破前高' if ig.get('new_hi') else ' 大阳'}")
         text = "\n".join(lines)
-        # 2026-08-15 审计 M4：飞书失败降级企微，均失败才落盘
+        # 2026-08-16：只推飞书，失败仅落盘（企业微信通道已移除）
         hook = push.get_feishu_webhook()
         if hook and push.send_feishu(text, hook):
             print(f"点火信号已推飞书（{len(signals)} 条）：成功")
             return
         if hook:
-            print("⚠ 飞书发送失败，降级企业微信")
-        wh = push.get_wecom_webhook()
-        if wh:
-            ok = push.send_wecom(text, wh)
-            print(f"点火信号已推企业微信（{len(signals)} 条）：{'成功' if ok else '失败'}")
-            return
-        print("⚠ 未配置飞书/企业微信 webhook，点火信号仅落盘未推送")
+            print("⚠ 飞书发送失败，点火信号仅落盘未推送")
+        else:
+            print("⚠ 未配置飞书 webhook，点火信号仅落盘未推送")
     except Exception as e:  # noqa: BLE001
         print(f"⚠ 点火推送失败（不影响落盘）: {e}")
 
