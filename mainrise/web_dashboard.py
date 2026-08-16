@@ -21,8 +21,8 @@ from pathlib import Path
 
 from mainrise import paths
 
-BUY_STATUSES = ("B3打底仓", "二波加仓")
-STATUSES = ("观察", "B3待二波", "B3打底仓", "二波加仓")
+BUY_STATUSES = ("T1确认买点", "T0新信号", "回踩低吸")
+STATUSES = ("空头", "破位", "多头持有", "回踩低吸", "多头回踩", "T1确认买点", "T0新信号")
 DEFAULT_MAX_10D_GAIN = 150.0
 OUTPUT_NAME = "index.html"
 DASHBOARD_NAME = "dashboard.html"
@@ -328,7 +328,8 @@ def _chg_span(v) -> str:
 
 STATUS_COLORS = {
     "空头": "#8B949E", "破位": "#F85149", "多头持有": "#3FB950",
-    "B3待二波": "#8B949E", "B3打底仓": "#D29922", "二波加仓": "#F85149",
+    "回踩低吸": "#D29922", "多头回踩": "#39D2C0",
+    "T1确认买点": "#D29922", "T0新信号": "#F85149",
 }
 
 
@@ -380,7 +381,7 @@ def _positions_table(pos: dict) -> str:
     for r in active + pending + closed:
         st = r["status"]
         st_chip = _chip("多头持有" if st == "active" else (
-            "B3打底仓" if st == "pending" else "观察"))
+            "回踩低吸" if st == "pending" else "破位"))
         px = (r["last_close"] if st == "active" else r["close_price"])
         trs.append(
             f"<tr><td>{_code_link(r['code'])}</td><td>{_esc(r['name'])}</td>"
@@ -482,7 +483,7 @@ def _render_html(data: dict) -> str:
 <div class="wrap">
   <header>
     <h1>主升浪信号跟踪 · 网页仪表盘</h1>
-    <div class="sub">数据截止 <span class="date">{date_str}</span> ｜ 规则：两级模型——B3（均线粘合爆量突破）=打底仓；二波（回调后再次粘合放量启动）=最优买点加仓；止损-4%，止盈高点回落8%，20日时间止损</div>
+    <div class="sub">数据截止 <span class="date">{date_str}</span> ｜ 规则：均线多头+创20日新高+放量上攻；买点1=次日确认开盘买，买点2=回踩MA10低吸；止损-4%/破MA10，止盈高点回落8%，5日时间止损；单票≤1/3仓，最多3只并行</div>
   </header>
   <div class="nav">{nav}</div>
   <div class="kpis">{''.join(kpis)}</div>
@@ -518,7 +519,7 @@ def _render_html(data: dict) -> str:
   </section>
 
   <div class="note">数据源：output/reports/主升浪跟踪_*.csv + output/state/mainrise_positions.csv、
-  mainrise_watchlist.csv；涨跌幅/10日涨幅为百分数；买点提示=两级模型 B3 打底仓 / 二波加仓
+  mainrise_watchlist.csv；涨跌幅/10日涨幅为百分数；买点提示=观察池中 T0/T1/回踩低吸
   且 10日涨幅&lt;{DEFAULT_MAX_10D_GAIN:g}%（防追高）。</div>
   <footer>
     免责声明：本页面所有输出（信号、评分、买点提示、持仓）仅用于研究学习，
@@ -668,8 +669,9 @@ ABOUT_HTML = """
 <div class="card"><div class="body">
 <h2>核心信号规则</h2>
 <table><tr><th>环节</th><th>规则</th></tr>
-<tr><td>第一级 B3</td><td>均线粘合≤3% + 放量阳线（量比≥2） + 站上 5/10/20 日均线 + 距60日低点&lt;30% → 打底仓（2/3）</td></tr>
-<tr><td>第二级 二波</td><td>B3 后 3~30 日内深回调 2~12% + 均线再次粘合≤2% + 缩量 → 放量阳线再启动 → 加仓（1/3）</td></tr>
+<tr><td>信号日 T0</td><td>均线多头（MA5&gt;MA10&gt;MA20）+ 创 20 日新高 +（涨幅≥5% 且量比≥1.5）或涨停</td></tr>
+<tr><td>买点1</td><td>T0 次日确认（收&gt;MA5 且 低点≥T0收盘×0.97）→ 次日开盘买入</td></tr>
+<tr><td>买点2</td><td>回踩 MA10 缩量企稳（低点≥MA20×0.99）→ 低吸</td></tr>
 <tr><td>止损</td><td>买入价 -4%（盘中低点触发）</td></tr>
 <tr><td>止盈</td><td>盘中最高点到收盘回落 8%（收盘判断）</td></tr>
 <tr><td>时间止损</td><td>持仓 5 个交易日</td></tr>
@@ -678,7 +680,7 @@ ABOUT_HTML = """
 </table>
 <h2>页面说明</h2>
 <ul><li>KPI 仪表盘：信号/持仓/买点/每日概况/状态分布</li>
-<li>实时盯盘：交易日盘中 30 秒刷新，持仓止损-4%、回落8%、B3/二波 信号提醒</li>
+<li>实时盯盘：交易日盘中 30 秒刷新，持仓止损-4%、回落8%、观察池±5%、回踩 MA10/MA20</li>
 <li>每日报告：跟踪报告、综合评估、财务评估原文</li></ul>
 <p class="quote">免责：所有输出仅用于研究学习，不构成投资建议。</p>
 </div></div>
