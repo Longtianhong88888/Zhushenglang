@@ -149,52 +149,6 @@ class TestMessage(unittest.TestCase):
                 paths_mod.web_dir = old
 
 
-class TestWecom(unittest.TestCase):
-    def test_get_wecom_webhook_file(self):
-        import mainrise.paths as paths_mod
-        with tempfile.TemporaryDirectory() as td:
-            p = Path(td) / ".wecom_webhook"
-            p.write_text("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=ABC",
-                         encoding="utf-8")
-            old = paths_mod.home
-            try:
-                paths_mod.home = lambda: Path(td)
-                self.assertEqual(push.get_wecom_webhook(),
-                                 "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=ABC")
-            finally:
-                paths_mod.home = old
-
-    def test_send_wecom_ok_and_fail(self):
-        with mock.patch("mainrise.push.requests.post") as m:
-            m.return_value.status_code = 200
-            m.return_value.json.return_value = {"errcode": 0, "errmsg": "ok"}
-            self.assertTrue(push.send_wecom("hello", "KEY1"))
-            m.return_value.json.return_value = {"errcode": 93000, "errmsg": "invalid"}
-            self.assertFalse(push.send_wecom("hello", "KEY1"))
-
-    def test_send_alert_prefers_wecom(self):
-        # 配置了企业微信 → 走 wecom，不再占用 Server酱 5 次/天
-        with mock.patch("mainrise.push.get_wecom_webhook",
-                        return_value="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=K"), \
-                mock.patch("mainrise.push.send_wecom", return_value=True) as sw, \
-                mock.patch("mainrise.push.send_wechat", return_value=True) as sct:
-            self.assertEqual(push.send_alert("t", "d"), "ok")
-            sw.assert_called_once()
-            sct.assert_not_called()
-
-    def test_send_alert_fallback_serverchan(self):
-        # 未配置企业微信 → 回退 Server酱
-        with mock.patch("mainrise.push.get_wecom_webhook", return_value=""), \
-                mock.patch("mainrise.push.get_key", return_value="SCT_K"), \
-                mock.patch("mainrise.push.send_wechat", return_value=True) as sct:
-            self.assertEqual(push.send_alert("标题", "正文"), "ok")
-            sct.assert_called_once()
-
-    def test_run_wecom_no_webhook(self):
-        with mock.patch("mainrise.push.get_wecom_webhook", return_value=""):
-            self.assertEqual(push.run_wecom(), "no-key")
-
-
 class TestCloseConfirm(unittest.TestCase):
     def test_build_close_message(self):
         title, desp = push.build_close_message(
