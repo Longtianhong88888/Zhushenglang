@@ -1,10 +1,10 @@
-"""Server酱（方糖）+ 企业微信 推送：14:50 尾盘决策 / 17:30 收盘确认 / 告警 / 周报。
+"""飞书 + Server酱 推送：14:50 尾盘决策 / 17:30 收盘确认 / 告警 / 周报。
 
-渠道：
-- Server酱（方糖）：免费 5 条/天，用于 14:50/17:30 两个决策推送。
-- 企业微信群机器人（免费不限量，20 条/分钟）：用于 告警（流水线失败/健康巡检）、
-  周报、以及 14:50/17:30 消息的备用通道（--wecom）。webhook 配置：
-  环境变量 WECOM_WEBHOOK → settings.json wecom_webhook → ~/.wecom_webhook 文件。
+渠道（决策推送与告警统一：飞书优先 → Server酱兜底）：
+- 飞书群机器人（免费不限量）：14:50/17:30 决策推送与告警的首选通道。webhook 配置：
+  环境变量 FEISHU_WEBHOOK → settings.json feishu_webhook → ~/.feishu_webhook 文件。
+- Server酱（方糖，免费 5 条/天）：最后兜底（配额有限，非必要不用）。
+  （2026-08-16：企业微信通道已移除，用户确认未使用。）
 
 14:50（mainrise push）：读 output/web/live.json（monitor 盘中最新状态）——
   今日买入 = 大牛模型候选盘中满足 T0 近似（涨幅≥5% 且量比≥1.5，或涨停，且站上
@@ -16,16 +16,15 @@
   ——今日确认买入（信号日收盘价）/ 今日确认卖出（收盘跌破 MA20）/ 当前持仓 / 大盘
   状态；收盘口径以交割单为准，仅做文件读取（与 monitor 同理，不做全量重算）。
 
-Key 读取顺序：环境变量 SERVERCHAN_KEY → settings.json 的 serverchan_key
-            → ~/.serverchan_key 文件（均不进 git）。
+Key 读取顺序：环境变量 → settings.json → ~/.*_webhook（或 .serverchan_key）文件
+            （均不进 git）。
 
 用法:
-    mainrise push                # 14:50 读 live.json 推送（非交易日自动跳过）
-    mainrise push --close        # 17:30 收盘确认推送（读 bigbull 交割单）
-    mainrise push --wecom        # 改用企业微信渠道发 14:50 消息（不限量）
+    mainrise push                # 14:50 读 live.json 推送（飞书优先，非交易日自动跳过）
+    mainrise push --close        # 17:30 收盘确认推送（飞书优先，读 bigbull 交割单）
     mainrise push --dry-run      # 只打印消息不发送
-    mainrise push --test         # 推送测试消息（验证 key 与微信可达）
-    mainrise alert "标题" "正文"  # 告警：企业微信优先，Server酱兜底
+    mainrise push --test         # 推送测试消息（验证飞书可达）
+    mainrise alert "标题" "正文"  # 告警：飞书优先，Server酱兜底
 """
 from __future__ import annotations
 
@@ -46,7 +45,6 @@ def beijing_now() -> datetime:
     return datetime.utcnow() + timedelta(hours=8)
 
 SCT_URL = "https://sctapi.ftqq.com/{key}.send"
-WECOM_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={key}"
 FEISHU_URL = "{hook}"   # 飞书机器人 webhook 完整 URL（open.feishu.cn/open-apis/bot/v2/hook/xxx）
 LIVE_NAME = "live.json"
 CANDS_NAME = "bigbull_cands.json"
@@ -73,32 +71,6 @@ def get_key() -> str:
                 k = p.read_text(encoding="utf-8").strip()
                 if k:
                     return k
-        except Exception:  # noqa: BLE001
-            pass
-    return ""
-
-
-def get_wecom_webhook() -> str:
-    """企业微信群机器人 webhook：环境变量 → settings.json → ~/.wecom_webhook。"""
-    env = os.environ.get("WECOM_WEBHOOK", "").strip()
-    if env:
-        return env
-    try:
-        sf = Path(paths.home()) / "settings.json"
-        if sf.exists():
-            cfg = json.loads(sf.read_text(encoding="utf-8"))
-            w = str(cfg.get("wecom_webhook") or "").strip()
-            if w:
-                return w
-    except Exception:  # noqa: BLE001
-        pass
-    for p in (Path.home() / ".wecom_webhook",
-              Path(paths.home()) / ".wecom_webhook"):
-        try:
-            if p.exists():
-                w = p.read_text(encoding="utf-8").strip()
-                if w:
-                    return w
         except Exception:  # noqa: BLE001
             pass
     return ""
@@ -148,26 +120,34 @@ def send_feishu(content: str, webhook: str) -> bool:
         return False
 
 
-def send_wecom(content: str, webhook: str) -> bool:
-    """企业微信群机器人 markdown 推送（免费不限量，限 20 条/分钟）。"""
-    try:
-        resp = requests.post(WECOM_URL.format(key=webhook),
-                             json={"msgtype": "markdown",
-                                   "markdown": {"content": content}},
-                             timeout=15)
-        data = resp.json()
-        ok = resp.status_code == 200 and data.get("errcode") == 0
-        if not ok:
-            print(f"⚠ 企业微信推送失败: {resp.status_code} {data.get('errmsg')}")
-        return ok
-    except Exception as e:  # noqa: BLE001
-        print(f"⚠ 企业微信推送异常: {e}")
-        return False
+def send_decision(title: str, desp: str, dry_run: bool = False) -> str:
+    """决策推送（14:50/17:30）：飞书优先 → Server酱兜底。
+
+    2026-08-16 变更：原决策推送只走 Server酱（免费 5 条/天），常在收盘撞上限；
+    改为与告警一致的多渠道降级，飞书免费不限量，Server酱仅兜底。
+    2026-08-16：移除企业微信通道（用户确认未使用）。
+    """
+    if dry_run:
+        print(f"[dry-run] {title}\n\n{desp}")
+        return "ok"
+    # 飞书（文本）
+    fh = get_feishu_webhook()
+    if fh and send_feishu(f"**{title}**\n{desp}", fh):
+        return "ok"
+    if fh:
+        print("⚠ 飞书发送失败，降级 Server酱")
+    # Server酱兜底
+    key = get_key()
+    if not key:
+        print("⚠ 决策推送无可用渠道（未配置飞书 webhook / SERVERCHAN_KEY）")
+        return "no-key"
+    return "ok" if send_wechat(title[:64], desp, key) else "fail"
 
 
 def send_alert(title: str, desp: str, dry_run: bool = False) -> str:
-    """告警：飞书优先 → 企业微信 → Server酱（均免费/不限量优先）。
-    2026-08-15 审计 M4：渠道失败必须逐级降级（曾只试飞书失败即 fail）。"""
+    """告警：飞书优先 → Server酱兜底（均免费/不限量优先）。
+    2026-08-15 审计 M4：渠道失败必须逐级降级（曾只试飞书失败即 fail）。
+    2026-08-16：移除企业微信通道（用户确认未使用）。"""
     if dry_run:
         print(f"[dry-run] ⚠ {title}\n{desp}")
         return "ok"
@@ -176,46 +156,13 @@ def send_alert(title: str, desp: str, dry_run: bool = False) -> str:
     if fh and send_feishu(f"⚠ {title}\n{desp}", fh):
         return "ok"
     if fh:
-        print("⚠ 飞书发送失败，降级企业微信")
-    # 企业微信（markdown）
-    webhook = get_wecom_webhook()
-    if webhook and send_wecom(f"## ⚠ {title}\n\n{desp}", webhook):
-        return "ok"
-    if webhook:
-        print("⚠ 企业微信发送失败，降级 Server酱")
+        print("⚠ 飞书发送失败，降级 Server酱")
     # Server酱兜底
     key = get_key()
     if not key:
-        print("⚠ 告警无可用渠道（未配置飞书/企业微信 webhook / SERVERCHAN_KEY）")
+        print("⚠ 告警无可用渠道（未配置飞书 webhook / SERVERCHAN_KEY）")
         return "no-key"
     return "ok" if send_wechat(title[:64], desp, key) else "fail"
-
-
-def run_wecom(test: bool = False, dry_run: bool = False) -> str:
-    """企业微信渠道：--test 发测试消息；否则发 14:50 尾盘决策（同 Server酱内容）。"""
-    webhook = get_wecom_webhook()
-    if not webhook:
-        print("⚠ 未配置 WECOM_WEBHOOK（环境变量 / settings.json wecom_webhook"
-              " / ~/.wecom_webhook）")
-        return "no-key"
-    if test:
-        content = ("## ✅ 企业微信推送通道正常\n\n大牛模型 14:50 尾盘决策 / "
-                   "告警 / 周报 已接入（免费不限量）。\n\n"
-                   "> 研究线索，不构成投资建议。")
-        if dry_run:
-            print(f"[dry-run] {content}")
-            return "ok"
-        return "ok" if send_wecom(content, webhook) else "fail"
-    live = load_live()
-    if live is None:
-        print("非交易日或无盘中数据（live.json 非今日），跳过推送")
-        return "skip"
-    title, desp = build_message(live)
-    content = f"## {title}\n\n{desp}"
-    if dry_run:
-        print(f"[dry-run] {content}")
-        return "ok"
-    return "ok" if send_wecom(content, webhook) else "fail"
 
 
 def load_live() -> dict | None:
@@ -474,61 +421,37 @@ def run_close(dry_run: bool = False) -> str:
     title, desp = build_close_message(today, mkt_ret20,
                                       data.get("cands") or [], trades,
                                       hot_themes=hot_themes)
-    if dry_run:
-        print(f"[dry-run] {title}\n\n{desp}")
-        return "ok"
-    key = get_key()
-    if not key:
-        print("⚠ 未配置 SERVERCHAN_KEY（环境变量 / settings.json serverchan_key"
-              " / ~/.serverchan_key）")
-        return "no-key"
-    ok = send_wechat(title, desp, key)
-    print(f"推送 {'成功' if ok else '失败'}: {title}")
-    return "ok" if ok else "fail"
+    return send_decision(title, desp, dry_run=dry_run)
 
 
 def run(test: bool = False, close: bool = False, dry_run: bool = False) -> str:
     if close:
         return run_close(dry_run=dry_run)
-    key = get_key()
-    if not key:
-        print("⚠ 未配置 SERVERCHAN_KEY（环境变量 / settings.json serverchan_key"
-              " / ~/.serverchan_key）")
-        return "no-key"
     if test:
-        ok = send_wechat(
-            "主升浪·Server酱 测试",
-            "## ✅ 推送通道正常\n\n大牛模型 14:50 尾盘决策推送已接入。\n\n"
-            "> 研究线索，不构成投资建议。", key)
-        return "ok" if ok else "fail"
+        return send_decision(
+            "主升浪·推送通道测试",
+            "## ✅ 推送通道正常\n\n大牛模型 14:50 尾盘决策 / 17:30 收盘确认 "
+            "已接入飞书优先通道（免费不限量）。\n\n"
+            "> 研究线索，不构成投资建议。", dry_run=dry_run)
     live = load_live()
     if live is None:
         print("非交易日或无盘中数据（live.json 非今日），跳过推送")
         return "skip"
     title, desp = build_message(live)
-    if dry_run:
-        print(f"[dry-run] {title}\n\n{desp}")
-        return "ok"
-    ok = send_wechat(title, desp, key)
-    print(f"推送 {'成功' if ok else '失败'}: {title}")
-    return "ok" if ok else "fail"
+    return send_decision(title, desp, dry_run=dry_run)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Server酱/企业微信推送（14:50 尾盘决策 / 17:30 收盘确认）")
+        description="飞书/Server酱推送（14:50 尾盘决策 / 17:30 收盘确认，"
+                    "飞书优先→Server酱兜底）")
     ap.add_argument("--test", action="store_true", help="推送测试消息")
     ap.add_argument("--close", action="store_true",
                     help="17:30 收盘确认推送（读 bigbull 交割单，收盘口径）")
-    ap.add_argument("--wecom", action="store_true",
-                    help="改用企业微信渠道（免费不限量；--test 发企业微信测试）")
     ap.add_argument("--dry-run", action="store_true",
                     help="只打印消息不发送（不消耗配额）")
     args = ap.parse_args()
-    if args.wecom:
-        run_wecom(test=args.test, dry_run=args.dry_run)
-    else:
-        run(test=args.test, close=args.close, dry_run=args.dry_run)
+    run(test=args.test, close=args.close, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
