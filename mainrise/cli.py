@@ -207,13 +207,7 @@ def cmd_bigbull(_: argparse.Namespace) -> None:
 
 def cmd_push(args: argparse.Namespace) -> None:
     from mainrise import push
-    if args.wecom:
-        if args.close:
-            print("⚠ --wecom 与 --close 同时指定：企业微信渠道只发 14:50 尾盘消息，"
-                  "--close 被忽略；收盘确认请用默认 Server酱渠道（push --close）")
-        r = push.run_wecom(test=args.test, dry_run=args.dry_run)
-    else:
-        r = push.run(test=args.test, close=args.close, dry_run=args.dry_run)
+    r = push.run(test=args.test, close=args.close, dry_run=args.dry_run)
     print(f"推送结果: {r}")
 
 
@@ -525,17 +519,15 @@ def main() -> None:
     p = sub.add_parser("bigbull", help="大牛模型固化回测 + 门户（约15秒）")
     p.set_defaults(func=cmd_bigbull)
 
-    p = sub.add_parser("push", help="微信推送（14:50 尾盘决策 / 17:30 收盘确认 / 企业微信渠道）")
-    p.add_argument("--test", action="store_true", help="推送测试消息")
+    p = sub.add_parser("push", help="推送（14:50 尾盘决策 / 17:30 收盘确认，飞书优先→企业微信→Server酱）")
+    p.add_argument("--test", action="store_true", help="推送测试消息（飞书）")
     p.add_argument("--close", action="store_true",
                    help="17:30 收盘确认推送（读 bigbull 交割单，收盘口径）")
-    p.add_argument("--wecom", action="store_true",
-                   help="改用企业微信渠道（免费不限量）")
     p.add_argument("--dry-run", action="store_true",
                    help="只打印消息不发送（不消耗配额）")
     p.set_defaults(func=cmd_push)
 
-    p = sub.add_parser("alert", help="微信告警（企业微信优先，Server酱兜底）")
+    p = sub.add_parser("alert", help="告警（飞书优先，Server酱兜底）")
     p.add_argument("title", help="告警标题")
     p.add_argument("desp", help="告警正文（markdown）")
     p.add_argument("--dry-run", action="store_true", help="只打印不发送")
