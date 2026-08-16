@@ -101,39 +101,58 @@ class TestTailFeatures(unittest.TestCase):
 class TestRowStatus(unittest.TestCase):
     def _row(self, **kw):
         base = {"close": 10.0, "low": 9.9, "ma5": 9.8, "ma10": 9.5, "ma20": 9.0,
-                "vol_ratio": 0.8, "chg10": 10.0, "b3": False, "wave2": False,
-                "prev_close": 9.9}
+                "vol_ratio": 0.8, "chg10": 10.0, "signal": False, "prev_close": 9.9,
+                "bull": True}
         base.update(kw)
         return pd.Series(base)
 
-    def test_observe_default(self):
+    def test_bull_hold(self):
         label, hint = row_status(self._row(), False)
-        self.assertEqual(label, "观察")
-        self.assertIn("B3", hint)
+        self.assertEqual(label, "多头持有")
+        self.assertIn("MA10", hint)
 
-    def test_b3_base(self):
-        label, hint = row_status(self._row(b3=True), False)
-        self.assertEqual(label, "B3打底仓")
-        self.assertIn("打底仓", hint)
+    def test_pullback_buy(self):
+        label, hint = row_status(self._row(close=9.6, low=9.1, ma5=9.8, vol_ratio=0.6), False)
+        self.assertEqual(label, "回踩低吸")
+        self.assertIn("买点2", hint)
 
-    def test_wave2_add(self):
-        label, hint = row_status(self._row(wave2=True), False)
-        self.assertEqual(label, "二波加仓")
-        self.assertIn("加仓", hint)
+    def test_pullback_quality_filters(self):
+        # 深回踩（日跌幅 -4%）不算企稳
+        label, _ = row_status(self._row(close=9.6, low=9.1, ma5=9.8,
+                                        vol_ratio=0.6, chg=-4.0), False)
+        self.assertNotEqual(label, "回踩低吸")
+        # 收盘跌破 MA20 不算企稳
+        label2, _ = row_status(self._row(close=8.95, low=8.9, ma5=9.8,
+                                         ma20=9.0, vol_ratio=0.6, chg=-1.0),
+                               False)
+        self.assertNotEqual(label2, "回踩低吸")
+        # 浅回踩 + 缩量 -> 正常买点2
+        label3, hint = row_status(self._row(close=9.6, low=9.1, ma5=9.8,
+                                            vol_ratio=0.6, chg=-1.5), False)
+        self.assertEqual(label3, "回踩低吸")
+        self.assertIn("回踩-1.5%", hint)
 
-    def test_prev_b3_waiting(self):
+    def test_broken_ma20(self):
+        label, _ = row_status(self._row(close=8.5, ma20=9.0), False)
+        self.assertEqual(label, "破位")
+
+    def test_t0_signal(self):
+        label, _ = row_status(self._row(signal=True), False)
+        self.assertEqual(label, "T0新信号")
+
+    def test_t1_confirm(self):
         label, _ = row_status(self._row(), True)
-        self.assertEqual(label, "B3待二波")
+        self.assertEqual(label, "T1确认买点")
 
     def test_extended_10d_warning(self):
-        label, hint = row_status(self._row(b3=True, chg10=120.0), False, max_10d=80)
+        label, hint = row_status(self._row(signal=True, chg10=120.0), False, max_10d=80)
         self.assertIn("涨幅过大", hint)
 
     def test_max_10d_default_relaxed(self):
         # 默认阈值 150%：120% 不再提示"涨幅过大"
-        label, hint = row_status(self._row(b3=True, chg10=120.0), False)
+        label, hint = row_status(self._row(signal=True, chg10=120.0), False)
         self.assertNotIn("涨幅过大", hint)
-        label, hint = row_status(self._row(b3=True, chg10=160.0), False)
+        label, hint = row_status(self._row(signal=True, chg10=160.0), False)
         self.assertIn("涨幅过大", hint)
 
 
